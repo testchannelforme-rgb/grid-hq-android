@@ -1,0 +1,88 @@
+name: Build GridHQ APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract exact source archive
+        run: unzip -q MonopostoChampionshipManager_COMPLETE.zip -d extracted
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Optional existing signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.GRIDHQ_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.GRIDHQ_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.GRIDHQ_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.GRIDHQ_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            test -n "$KEYSTORE_PASSWORD" && test -n "$KEY_ALIAS" && test -n "$KEY_PASSWORD"
+            umask 077
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/gridhq.keystore"
+            echo "GRIDHQ_KEYSTORE_PATH=$RUNNER_TEMP/gridhq.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Using a temporary debug key. This APK is not guaranteed to update existing installations."
+          fi
+      - name: Generate official wrapper, test, lint and build
+        working-directory: extracted/GridHQ
+        env:
+          GRIDHQ_KEYSTORE_PASSWORD: ${{ secrets.GRIDHQ_KEYSTORE_PASSWORD }}
+          GRIDHQ_KEY_ALIAS: ${{ secrets.GRIDHQ_KEY_ALIAS }}
+          GRIDHQ_KEY_PASSWORD: ${{ secrets.GRIDHQ_KEY_PASSWORD }}
+        run: |
+          gradle --no-daemon wrapper --gradle-version 8.9 --distribution-type bin
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run migration tests on Android
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          GRIDHQ_KEYSTORE_PASSWORD: ${{ secrets.GRIDHQ_KEYSTORE_PASSWORD }}
+          GRIDHQ_KEY_ALIAS: ${{ secrets.GRIDHQ_KEY_ALIAS }}
+          GRIDHQ_KEY_PASSWORD: ${{ secrets.GRIDHQ_KEY_PASSWORD }}
+        with:
+          api-level: 29
+          arch: x86_64
+          disable-animations: true
+          working-directory: extracted/GridHQ
+          script: ./gradlew --no-daemon connectedDebugAndroidTest --stacktrace
+      - name: Name distributable APK
+        run: cp extracted/GridHQ/app/build/outputs/apk/debug/app-debug.apk "extracted/GridHQ/app/build/outputs/apk/debug/Grid HQ.apk"
+      - name: Upload tested APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GridHQ-v2-APK
+          path: extracted/GridHQ/app/build/outputs/apk/debug/Grid HQ.apk
+          if-no-files-found: error
+      - name: Upload reports and generated schemas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GridHQ-build-reports
+          path: |
+            extracted/GridHQ/app/build/reports/
+            extracted/GridHQ/app/build/outputs/androidTest-results/
+            extracted/GridHQ/app/schemas/
