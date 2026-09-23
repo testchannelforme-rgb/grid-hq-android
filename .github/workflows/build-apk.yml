@@ -22,10 +22,7 @@ jobs:
         run: |
           rm -rf extracted
           mkdir -p extracted
-
           unzip -q MonopostoChampionshipManager_COMPLETE.zip -d extracted
-
-          # Remove the placeholder wrapper JAR if it exists.
           rm -f extracted/GridHQ/gradle/wrapper/gradle-wrapper.jar
 
       - name: Set up Java 17
@@ -36,13 +33,13 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
       - name: Install required Android SDK packages
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager \
-            "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
@@ -86,20 +83,17 @@ jobs:
           gradle --no-daemon wrapper \
             --gradle-version 8.9 \
             --distribution-type bin
-
           chmod +x gradlew
 
       - name: Run unit tests
         working-directory: extracted/GridHQ
         shell: bash
-        run: |
-          ./gradlew --no-daemon testDebugUnitTest --stacktrace
+        run: ./gradlew --no-daemon testDebugUnitTest --stacktrace
 
       - name: Run lint
         working-directory: extracted/GridHQ
         shell: bash
-        run: |
-          ./gradlew --no-daemon lintDebug --stacktrace
+        run: ./gradlew --no-daemon lintDebug --stacktrace
 
       - name: Build debug APK
         working-directory: extracted/GridHQ
@@ -108,8 +102,7 @@ jobs:
           GRIDHQ_KEY_ALIAS: ${{ secrets.GRIDHQ_KEY_ALIAS }}
           GRIDHQ_KEY_PASSWORD: ${{ secrets.GRIDHQ_KEY_PASSWORD }}
         shell: bash
-        run: |
-          ./gradlew --no-daemon assembleDebug --stacktrace
+        run: ./gradlew --no-daemon assembleDebug --stacktrace
 
       - name: Prepare distributable APK
         shell: bash
