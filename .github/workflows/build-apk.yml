@@ -16,8 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract exact source archive
-        run: unzip -q MonopostoChampionshipManager_COMPLETE.zip -d extracted
+      - name: Extract source and remove placeholder Gradle wrapper
+        run: |
+          unzip -q MonopostoChampionshipManager_COMPLETE.zip -d extracted
+          rm extracted/GridHQ/gradle/wrapper/gradle-wrapper.jar
 
       - uses: actions/setup-java@v4
         with:
@@ -52,7 +54,7 @@ jobs:
             echo "::warning::Using a temporary debug key. This APK is not guaranteed to update existing installations."
           fi
 
-      - name: Generate official wrapper, test, lint and build
+      - name: Generate genuine wrapper, test, lint and build
         working-directory: extracted/GridHQ
         env:
           GRIDHQ_KEYSTORE_PASSWORD: ${{ secrets.GRIDHQ_KEYSTORE_PASSWORD }}
@@ -73,31 +75,4 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         env:
           GRIDHQ_KEYSTORE_PASSWORD: ${{ secrets.GRIDHQ_KEYSTORE_PASSWORD }}
-          GRIDHQ_KEY_ALIAS: ${{ secrets.GRIDHQ_KEY_ALIAS }}
-          GRIDHQ_KEY_PASSWORD: ${{ secrets.GRIDHQ_KEY_PASSWORD }}
-        with:
-          api-level: 29
-          arch: x86_64
-          disable-animations: true
-          working-directory: extracted/GridHQ
-          script: ./gradlew --no-daemon connectedDebugAndroidTest --stacktrace
-
-      - name: Name distributable APK
-        run: cp extracted/GridHQ/app/build/outputs/apk/debug/app-debug.apk "extracted/GridHQ/app/build/outputs/apk/debug/Grid HQ.apk"
-
-      - name: Upload tested APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: GridHQ-v2-APK
-          path: extracted/GridHQ/app/build/outputs/apk/debug/Grid HQ.apk
-          if-no-files-found: error
-
-      - name: Upload reports and generated schemas
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: GridHQ-build-reports
-          path: |
-            extracted/GridHQ/app/build/reports/
-            extracted/GridHQ/app/build/outputs/androidTest-results/
-            extracted/GridHQ/app/schemas/
+          GRIDHQ
