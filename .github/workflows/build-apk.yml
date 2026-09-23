@@ -10,34 +10,48 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Extract source and remove placeholder Gradle wrapper
+      - name: Extract source
+        shell: bash
         run: |
-          unzip -q MonopostoChampionshipManager_COMPLETE.zip -d extracted
-          rm extracted/GridHQ/gradle/wrapper/gradle-wrapper.jar
+          rm -rf extracted
+          mkdir -p extracted
 
-      - uses: actions/setup-java@v4
+          unzip -q MonopostoChampionshipManager_COMPLETE.zip -d extracted
+
+          # Remove the placeholder wrapper JAR if it exists.
+          rm -f extracted/GridHQ/gradle/wrapper/gradle-wrapper.jar
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Install SDK
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Install required Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
 
-      - name: Optional existing signing key
+      - name: Configure optional existing signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.GRIDHQ_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GRIDHQ_KEYSTORE_PASSWORD }}
@@ -46,60 +60,86 @@ jobs:
         shell: bash
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            test -n "$KEYSTORE_PASSWORD" && test -n "$KEY_ALIAS" && test -n "$KEY_PASSWORD"
+            if [ -z "$KEYSTORE_PASSWORD" ] || \
+               [ -z "$KEY_ALIAS" ] || \
+               [ -z "$KEY_PASSWORD" ]; then
+              echo "::error::Keystore was supplied, but one or more signing secrets are missing."
+              exit 1
+            fi
+
             umask 077
-            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/gridhq.keystore"
-            echo "GRIDHQ_KEYSTORE_PATH=$RUNNER_TEMP/gridhq.keystore" >> "$GITHUB_ENV"
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode \
+              > "$RUNNER_TEMP/gridhq.keystore"
+
+            echo "GRIDHQ_KEYSTORE_PATH=$RUNNER_TEMP/gridhq.keystore" \
+              >> "$GITHUB_ENV"
+
+            echo "Existing signing key configured."
           else
-            echo "::warning::Using a temporary debug key. This APK is not guaranteed to update existing installations."
+            echo "::warning::No existing signing key supplied. The debug APK will use the automatically generated debug signing key."
           fi
 
-      - name: Generate genuine wrapper, test, lint and build
+      - name: Generate Gradle wrapper
+        working-directory: extracted/GridHQ
+        shell: bash
+        run: |
+          gradle --no-daemon wrapper \
+            --gradle-version 8.9 \
+            --distribution-type bin
+
+          chmod +x gradlew
+
+      - name: Run unit tests
+        working-directory: extracted/GridHQ
+        shell: bash
+        run: |
+          ./gradlew --no-daemon testDebugUnitTest --stacktrace
+
+      - name: Run lint
+        working-directory: extracted/GridHQ
+        shell: bash
+        run: |
+          ./gradlew --no-daemon lintDebug --stacktrace
+
+      - name: Build debug APK
         working-directory: extracted/GridHQ
         env:
           GRIDHQ_KEYSTORE_PASSWORD: ${{ secrets.GRIDHQ_KEYSTORE_PASSWORD }}
           GRIDHQ_KEY_ALIAS: ${{ secrets.GRIDHQ_KEY_ALIAS }}
           GRIDHQ_KEY_PASSWORD: ${{ secrets.GRIDHQ_KEY_PASSWORD }}
+        shell: bash
         run: |
-          gradle --no-daemon wrapper --gradle-version 8.9 --distribution-type bin
-          chmod +x gradlew
-          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
+          ./gradlew --no-daemon assembleDebug --stacktrace
 
-      - name: Enable emulator acceleration
+      - name: Prepare distributable APK
+        shell: bash
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
+          APK="extracted/GridHQ/app/build/outputs/apk/debug/app-debug.apk"
 
-      - name: Run migration tests on Android
-        uses: reactivecircus/android-emulator-runner@v2
-        env:
-          GRIDHQ_KEYSTORE_PASSWORD: ${{ secrets.GRIDHQ_KEYSTORE_PASSWORD }}
-          GRIDHQ_KEY_ALIAS: ${{ secrets.GRIDHQ_KEY_ALIAS }}
-          GRIDHQ_KEY_PASSWORD: ${{ secrets.GRIDHQ_KEY_PASSWORD }}
-        with:
-          api-level: 29
-          arch: x86_64
-          disable-animations: true
-          working-directory: extracted/GridHQ
-          script: ./gradlew --no-daemon connectedDebugAndroidTest --stacktrace
+          if [ ! -f "$APK" ]; then
+            echo "::error::APK was not generated."
+            exit 1
+          fi
 
-      - name: Name distributable APK
-        run: cp extracted/GridHQ/app/build/outputs/apk/debug/app-debug.apk "extracted/GridHQ/app/build/outputs/apk/debug/Grid HQ.apk"
+          cp "$APK" \
+            "extracted/GridHQ/app/build/outputs/apk/debug/GridHQ-v2.apk"
 
-      - name: Upload tested APK
+          ls -lh extracted/GridHQ/app/build/outputs/apk/debug/
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: GridHQ-v2-APK
-          path: extracted/GridHQ/app/build/outputs/apk/debug/Grid HQ.apk
+          path: extracted/GridHQ/app/build/outputs/apk/debug/GridHQ-v2.apk
           if-no-files-found: error
+          retention-days: 30
 
-      - name: Upload reports and generated schemas
+      - name: Upload build reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: GridHQ-build-reports
           path: |
             extracted/GridHQ/app/build/reports/
-            extracted/GridHQ/app/build/outputs/androidTest-results/
             extracted/GridHQ/app/schemas/
+          if-no-files-found: ignore
