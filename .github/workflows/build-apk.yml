@@ -124,9 +124,15 @@ jobs:
           api-level: 29
           arch: x86_64
           profile: pixel_2
+          disk-size: 2048M
+          ram-size: 2048M
+          emulator-boot-timeout: 300
           disable-animations: true
           working-directory: extracted/GridHQ
-          script: ./gradlew --no-daemon connectedDebugAndroidTest --stacktrace
+          script: |
+            ./gradlew --no-daemon connectedDebugAndroidTest --stacktrace
+            mkdir -p app/build/reports/screenshots
+            adb pull /sdcard/Android/data/com.monoposto.championship/files/. app/build/reports/screenshots/
 
       - name: Package editable project with official wrapper
         run: |
