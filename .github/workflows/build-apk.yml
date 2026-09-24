@@ -11,11 +11,15 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
 
+    env:
+      GRIDHQ_KEYSTORE_PASSWORD: ${{ secrets.GRIDHQ_KEYSTORE_PASSWORD }}
+      GRIDHQ_KEY_ALIAS: ${{ secrets.GRIDHQ_KEY_ALIAS }}
+      GRIDHQ_KEY_PASSWORD: ${{ secrets.GRIDHQ_KEY_PASSWORD }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Extract source
         shell: bash
@@ -104,6 +108,38 @@ jobs:
         shell: bash
         run: ./gradlew --no-daemon assembleDebug --stacktrace
 
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Test migrations and navigation on Android
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          GRIDHQ_KEYSTORE_PASSWORD: ${{ secrets.GRIDHQ_KEYSTORE_PASSWORD }}
+          GRIDHQ_KEY_ALIAS: ${{ secrets.GRIDHQ_KEY_ALIAS }}
+          GRIDHQ_KEY_PASSWORD: ${{ secrets.GRIDHQ_KEY_PASSWORD }}
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          working-directory: extracted/GridHQ
+          script: ./gradlew --no-daemon connectedDebugAndroidTest --stacktrace
+
+      - name: Package editable project with official wrapper
+        run: |
+          cd extracted
+          zip -qr ../GridHQ-2.1-source.zip GridHQ -x '*/build/*' '*/.gradle/*' '*/local.properties'
+
+      - name: Upload editable project
+        uses: actions/upload-artifact@v4
+        with:
+          name: GridHQ-2.1-source
+          path: GridHQ-2.1-source.zip
+          if-no-files-found: error
+
       - name: Prepare distributable APK
         shell: bash
         run: |
@@ -115,15 +151,15 @@ jobs:
           fi
 
           cp "$APK" \
-            "extracted/GridHQ/app/build/outputs/apk/debug/GridHQ-v2.apk"
+            "extracted/GridHQ/app/build/outputs/apk/debug/GridHQ-2.1.apk"
 
           ls -lh extracted/GridHQ/app/build/outputs/apk/debug/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: GridHQ-v2-APK
-          path: extracted/GridHQ/app/build/outputs/apk/debug/GridHQ-v2.apk
+          name: GridHQ-2.1-APK
+          path: extracted/GridHQ/app/build/outputs/apk/debug/GridHQ-2.1.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -135,4 +171,5 @@ jobs:
           path: |
             extracted/GridHQ/app/build/reports/
             extracted/GridHQ/app/schemas/
+            extracted/GridHQ/app/build/outputs/androidTest-results/
           if-no-files-found: ignore
