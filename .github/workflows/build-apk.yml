@@ -28,11 +28,12 @@ jobs:
           mkdir -p extracted
           unzip -q MonopostoChampionshipManager_COMPLETE.zip -d extracted
           rm -f extracted/GridHQ/gradle/wrapper/gradle-wrapper.jar
-          # Optional: apply test fix for Compose NavigationBar merged semantics
           if [ -f patches/NavigationRegressionTest.kt ]; then
             cp patches/NavigationRegressionTest.kt \
               extracted/GridHQ/app/src/androidTest/java/com/monoposto/championship/NavigationRegressionTest.kt
             echo "Applied NavigationRegressionTest patch"
+          else
+            echo "::warning::patches/NavigationRegressionTest.kt not found — instrumented tests may fail"
           fi
 
       - name: Set up Java 17
@@ -135,7 +136,6 @@ jobs:
             \~/.android/adb*
           key: ${{ runner.os }}-ubuntu24-api29-default-x86_64-nexusone-v2
 
-      # Snapshot step: do NOT use -no-snapshot-save (we need the snapshot)
       - name: Create clean AVD snapshot
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
