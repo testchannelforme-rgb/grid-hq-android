@@ -171,11 +171,11 @@ jobs:
           working-directory: extracted/GridHQ
           script: |
             ./gradlew --no-daemon connectedDebugAndroidTest --stacktrace
-            mkdir -p app/build/reports/screenshots
-            if adb shell "[ -d /sdcard/Android/data/com.monoposto.championship/files ]"; then
-              adb pull /sdcard/Android/data/com.monoposto.championship/files/. app/build/reports/screenshots/
+            if adb shell 'test -d /sdcard/Android/data/com.monoposto.championship/files' 2>/dev/null; then
+              mkdir -p app/build/reports/screenshots
+              adb pull /sdcard/Android/data/com.monoposto.championship/files/. app/build/reports/screenshots/ || echo "::warning::Screenshot pull failed; continuing"
             else
-              echo "::warning::Remote screenshot directory does not exist, skipping pull"
+              echo "::warning::Remote screenshot directory does not exist; skipping screenshot pull"
             fi
 
       - name: Package editable project with official wrapper
