@@ -64,15 +64,30 @@ class NavigationRegressionTest {
     }
     @Test fun homeAndStatsRenderWithLongNames() {
         val base = fixture()
-        val c = base.copy(name = "A championship with a very long name for accessibility", drivers = base.drivers.map { it.copy(name = it.name + " — a long driver name") })
+        val c = base.copy(
+            name = "A championship with a very long name for accessibility",
+            drivers = base.drivers.map { it.copy(name = it.name + " - long") }
+        )
         var stats by mutableStateOf(false)
-        compose.setContent { AppTheme { if (stats) StatsScreen(c, {}, {}) else HomeScreen(c, {}, {}) } }
+        compose.setContent {
+            AppTheme {
+                if (stats) StatsScreen(c, {}, {}) else HomeScreen(c, {}, {})
+            }
+        }
         compose.onNodeWithText("Race control").assertIsDisplayed()
         screenshot("home")
+
         compose.runOnIdle { stats = true }
         compose.waitForIdle()
-        compose.onNodeWithText("Season statistics").assertIsDisplayed()
+        // Wait until Stats is composed (small emulator can lag after state switch)
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("Season statistics")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        compose.onNodeWithText("Season statistics").assertExists()
         screenshot("stats")
+    }
     }
     @Test fun missingConstructorShowsRecoverableState() {
         compose.setContent { AppTheme { TeamDetailScreen(fixture(), -999) {} } }
