@@ -108,11 +108,45 @@ jobs:
         shell: bash
         run: ./gradlew --no-daemon assembleDebug --stacktrace
 
+      # The hosted runner previously ran out of space while creating userdata.
+      - name: Reserve disk space for Android emulator
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          df -h /
+
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+
+      - name: Cache Android virtual device
+        id: avd-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: ${{ runner.os }}-ubuntu24-api29-default-x86_64-nexusone-v1
+
+      # Create a clean boot snapshot only on a cache miss.
+      # Snapshot saving must stay enabled during this preparation step.
+      - name: Create clean AVD snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: default
+          arch: x86_64
+          profile: Nexus One
+          avd-name: gridhq-api29
+          force-avd-creation: false
+          disk-size: 2048M
+          ram-size: 2048M
+          emulator-boot-timeout: 1200 # Seconds: 20 minutes
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Clean AVD snapshot prepared."
 
       - name: Test migrations and navigation on Android
         uses: reactivecircus/android-emulator-runner@v2
@@ -123,10 +157,14 @@ jobs:
         with:
           api-level: 29
           arch: x86_64
-          profile: pixel_2
+          target: default
+          profile: Nexus One
+          avd-name: gridhq-api29
+          force-avd-creation: false
           disk-size: 2048M
           ram-size: 2048M
-          emulator-boot-timeout: 300
+          emulator-boot-timeout: 1200 # Seconds: 20 minutes
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           working-directory: extracted/GridHQ
           script: |
