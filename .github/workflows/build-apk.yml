@@ -3,7 +3,7 @@ name: Build GridHQ APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, ai-development]
 
 permissions:
   contents: read
@@ -45,7 +45,9 @@ jobs:
       - name: Install required Android SDK packages
         shell: bash
         run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           sdkmanager \
+            "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
@@ -127,8 +129,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            \~/.android/avd/*
-            \~/.android/adb*
+            ~/.android/avd/*
+            ~/.android/adb*
           key: ${{ runner.os }}-ubuntu24-api29-default-x86_64-nexusone-v2
 
       - name: Create clean AVD snapshot
@@ -140,7 +142,7 @@ jobs:
           arch: x86_64
           profile: Nexus One
           avd-name: gridhq-api29
-          force-avd-creation: false
+          force-avd-creation: true
           disk-size: 2048M
           ram-size: 2048M
           emulator-boot-timeout: 1200
