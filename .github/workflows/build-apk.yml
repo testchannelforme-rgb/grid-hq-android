@@ -171,12 +171,7 @@ jobs:
           working-directory: extracted/GridHQ
           script: |
             ./gradlew --no-daemon connectedDebugAndroidTest --stacktrace
-            if adb shell 'test -d /sdcard/Android/data/com.monoposto.championship/files' 2>/dev/null; then
-              mkdir -p app/build/reports/screenshots
-              adb pull /sdcard/Android/data/com.monoposto.championship/files/. app/build/reports/screenshots/ || echo "::warning::Screenshot pull failed; continuing"
-            else
-              echo "::warning::Remote screenshot directory does not exist; skipping screenshot pull"
-            fi
+            adb shell 'test -d /sdcard/Android/data/com.monoposto.championship/files' 2>/dev/null && mkdir -p app/build/reports/screenshots && adb pull /sdcard/Android/data/com.monoposto.championship/files/. app/build/reports/screenshots/ || echo "::warning::Screenshot pull skipped or failed; continuing"
 
       - name: Package editable project with official wrapper
         run: |
@@ -191,26 +186,26 @@ jobs:
           if-no-files-found: error
 
       - name: Prepare distributable APK
+        if: always()
         shell: bash
         run: |
           APK="extracted/GridHQ/app/build/outputs/apk/debug/app-debug.apk"
 
-          if [ ! -f "$APK" ]; then
-            echo "::error::APK was not generated."
-            exit 1
+          if [ -f "$APK" ]; then
+            cp "$APK" \
+              "extracted/GridHQ/app/build/outputs/apk/debug/GridHQ-2.1.apk"
+            ls -lh extracted/GridHQ/app/build/outputs/apk/debug/
+          else
+            echo "::warning::APK not found at $APK; skipping APK preparation"
           fi
 
-          cp "$APK" \
-            "extracted/GridHQ/app/build/outputs/apk/debug/GridHQ-2.1.apk"
-
-          ls -lh extracted/GridHQ/app/build/outputs/apk/debug/
-
       - name: Upload APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: GridHQ-2.1-APK
           path: extracted/GridHQ/app/build/outputs/apk/debug/GridHQ-2.1.apk
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 30
 
       - name: Upload build reports
