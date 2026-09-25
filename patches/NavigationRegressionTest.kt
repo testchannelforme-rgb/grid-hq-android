@@ -19,17 +19,25 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class NavigationRegressionTest {
     @get:Rule val compose = createComposeRule()
+
     private fun fixture(): Championship {
         val c = ChampionshipFactory.create("Navigation QA", "2026", 3)
-        val results = c.drivers.mapIndexed { i, d -> DriverRaceResult(d.id, i + 1, ResultStatus.FINISHED, teamId = d.teamId) }
+        val results = c.drivers.mapIndexed { i, d ->
+            DriverRaceResult(d.id, i + 1, ResultStatus.FINISHED, teamId = d.teamId)
+        }
         return ChampionshipEngine.recalculateAll(c.copy(races = c.races.map { it.copy(results = results) }))
     }
+
     private fun screenshot(name: String) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
-        File(context.getExternalFilesDir(null), "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        File(context.getExternalFilesDir(null), "$name.png").outputStream().use {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
     }
-    @Test fun constructorThenDriverThenRaceWithOverlappingIds() {
+
+    @Test
+    fun constructorThenDriverThenRaceWithOverlappingIds() {
         val c = fixture()
         val context = ApplicationProvider.getApplicationContext<android.app.Application>()
         val repository = ChampionshipRepository(ChampionshipDatabase.get(context))
@@ -37,7 +45,8 @@ class NavigationRegressionTest {
         val vm = ChampionshipViewModel(context)
         compose.setContent { AppTheme { MonopostoApp(vm) } }
         compose.waitUntil(10_000) { !vm.state.value.loading }
-        // NavigationBarItem merges icon contentDescription with label → must use unmerged tree
+
+        // NavigationBarItem merges icon contentDescription with label → use unmerged tree
         compose.onNodeWithContentDescription("Standings", useUnmergedTree = true).performClick()
         c.teams.forEach { team ->
             compose.onNodeWithText("Constructors").performClick()
@@ -47,12 +56,14 @@ class NavigationRegressionTest {
             if (team.id == c.teams.first().id) screenshot("constructor")
             compose.onNodeWithContentDescription("Back").performClick()
         }
+
         compose.onNodeWithText("Drivers", useUnmergedTree = true).performClick()
         compose.onNode(hasScrollAction()).performScrollToNode(hasText(c.drivers[0].name))
         compose.onNodeWithText(c.drivers[0].name).performClick()
         compose.onNodeWithText("Race-by-race performance").assertIsDisplayed()
         screenshot("driver")
         compose.onNodeWithContentDescription("Back").performClick()
+
         compose.onNodeWithContentDescription("Races", useUnmergedTree = true).performClick()
         c.races.forEach { race ->
             compose.onNode(hasScrollAction()).performScrollToNode(hasText(race.name))
@@ -62,7 +73,9 @@ class NavigationRegressionTest {
         }
         kotlinx.coroutines.runBlocking { repository.delete(c.id) }
     }
-    @Test fun homeAndStatsRenderWithLongNames() {
+
+    @Test
+    fun homeAndStatsRenderWithLongNames() {
         val base = fixture()
         val c = base.copy(
             name = "A championship with a very long name for accessibility",
@@ -79,7 +92,7 @@ class NavigationRegressionTest {
 
         compose.runOnIdle { stats = true }
         compose.waitForIdle()
-        // Wait until Stats is composed (small emulator can lag after state switch)
+        // Small emulator can lag after state switch — wait for Stats header
         compose.waitUntil(5_000) {
             compose.onAllNodesWithText("Season statistics")
                 .fetchSemanticsNodes()
@@ -88,8 +101,9 @@ class NavigationRegressionTest {
         compose.onNodeWithText("Season statistics").assertExists()
         screenshot("stats")
     }
-    }
-    @Test fun missingConstructorShowsRecoverableState() {
+
+    @Test
+    fun missingConstructorShowsRecoverableState() {
         compose.setContent { AppTheme { TeamDetailScreen(fixture(), -999) {} } }
         compose.onNodeWithText("This entry is no longer available").assertIsDisplayed()
     }
