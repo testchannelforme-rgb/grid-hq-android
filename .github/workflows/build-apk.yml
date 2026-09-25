@@ -44,8 +44,6 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v2
-        with:
-          packages: 'platform-tools'
 
       - name: Install required Android SDK packages
         shell: bash
