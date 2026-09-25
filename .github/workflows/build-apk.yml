@@ -172,7 +172,11 @@ jobs:
           script: |
             ./gradlew --no-daemon connectedDebugAndroidTest --stacktrace
             mkdir -p app/build/reports/screenshots
-            adb pull /sdcard/Android/data/com.monoposto.championship/files/. app/build/reports/screenshots/
+            if adb shell "[ -d /sdcard/Android/data/com.monoposto.championship/files ]"; then
+              adb pull /sdcard/Android/data/com.monoposto.championship/files/. app/build/reports/screenshots/
+            else
+              echo "::warning::Remote screenshot directory does not exist, skipping pull"
+            fi
 
       - name: Package editable project with official wrapper
         run: |
